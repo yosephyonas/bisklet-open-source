@@ -1,0 +1,134 @@
+// android/settings.gradle (Groovy DSL)
+// - Resolves the Flutter SDK path for pluginManagement includeBuild.
+// - Exposes a Mapbox downloads token (sk.*) to all modules via extra properties.
+// - Adds the secured Mapbox Maven repository only when the downloads token is present.
+
+import java.util.Properties
+import java.util.Base64
+import org.gradle.api.credentials.HttpHeaderCredentials
+import org.gradle.authentication.http.HttpHeaderAuthentication
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+pluginManagement {
+    def loadFlutterSdkPath = {
+        def props = new Properties()
+        file('local.properties').withInputStream { props.load(it) }
+        def sdkPath = props.getProperty('flutter.sdk')
+        if (!sdkPath) {
+            throw new GradleException('flutter.sdk not set in local.properties')
+        }
+        sdkPath
+    }
+
+    def computeMapboxDownloadsToken = {
+        def firstNonBlank = { Iterable values ->
+            for (value in values) {
+                def trimmed = value?.toString()?.trim()
+                if (trimmed) {
+                    return trimmed
+                }
+            }
+            return null
+        }
+
+        def readTokenFrom = { File file ->
+            if (!file?.exists()) {
+                return null
+            }
+            def props = new Properties()
+            file.withInputStream { props.load(it) }
+            props.getProperty('MAPBOX_DOWNLOADS_TOKEN')?.trim()
+        }
+
+        def candidates = [
+            System.getenv('MAPBOX_DOWNLOADS_TOKEN'),
+            readTokenFrom(new File(settingsDir, 'gradle.properties')),
+            (System.getProperty('user.home')
+                ? readTokenFrom(new File(System.getProperty('user.home'), '.gradle/gradle.properties'))
+                : null)
+        ]
+
+        def token = firstNonBlank(candidates)
+        if (token?.startsWith('sk.')) {
+            return token
+        }
+        if (token?.startsWith('pk.')) {
+            println ">>> settings.gradle: ignored MAPBOX_DOWNLOADS_TOKEN that looks like a public pk.* token."
+        }
+        return null
+    }
+
+    settings.extensions.extraProperties.set('computeMapboxDownloadsToken', computeMapboxDownloadsToken)
+
+    def flutterSdkPath = loadFlutterSdkPath()
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    def mapboxToken = computeMapboxDownloadsToken()
+    settings.extensions.extraProperties.set('mapboxDownloadsToken', mapboxToken)
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven { url = uri('https://storage.googleapis.com/download.flutter.io') }
+    }
+}
+
+plugins {
+    id 'dev.flutter.flutter-plugin-loader' version '1.0.0'
+    id 'com.android.application' version '8.9.1' apply false
+    id 'org.jetbrains.kotlin.android' version '2.1.0' apply false
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri('https://storage.googleapis.com/download.flutter.io') }
+
+        def downloadsToken = settings.extensions.extraProperties.has('mapboxDownloadsToken')
+            ? settings.extensions.extraProperties.get('mapboxDownloadsToken')
+            : (settings.extensions.extraProperties.has('computeMapboxDownloadsToken')
+                ? settings.extensions.extraProperties.get('computeMapboxDownloadsToken')()
+                : null)
+
+        if (downloadsToken) {
+            def headerValue = "Basic " + Base64.encoder.encodeToString(("mapbox:" + downloadsToken).getBytes("UTF-8"))
+            maven {
+                name = 'mapbox'
+                url = uri('https://api.mapbox.com/downloads/v2/releases/maven')
+                credentials(HttpHeaderCredentials) {
+                    name = "Authorization"
+                    value = headerValue
+                }
+                authentication { header(HttpHeaderAuthentication) }
+                metadataSources { mavenPom(); artifact() }
+            }
+            println ">>> settings.gradle: Mapbox Maven repository enabled."
+        } else {
+            println ">>> settings.gradle: No MAPBOX_DOWNLOADS_TOKEN found. Maven Central only."
+        }
+    }
+}
+
+rootProject.name = 'bisklet'
+include ':app'
+
+def maskToken(String token) {
+    if (!token || token.trim().isEmpty()) {
+        return 'none'
+    }
+    def trimmed = token.trim()
+    if (trimmed.length() <= 12) {
+        return trimmed.substring(0, Math.min(trimmed.length(), 6)) + '...'
+    }
+    return trimmed.substring(0, 6) + '...' + trimmed.substring(trimmed.length() - 6)
+}
+
+def downloadsToken = settings.extensions.extraProperties.has('mapboxDownloadsToken')
+    ? settings.extensions.extraProperties.get('mapboxDownloadsToken')
+    : null
+
+println "settings.gradle evaluated. Mapbox downloads token present: ${downloadsToken ? 'true' : 'false'} (${maskToken(downloadsToken)})"

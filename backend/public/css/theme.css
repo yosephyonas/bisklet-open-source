@@ -1,0 +1,45 @@
+:root {
+    /* Approved BISKLET brand spectrum. Keep all branded colors mapped here. */
+    --teal-extra-light: #e6f4f3;
+    --teal-light: #b8dcda;
+    --teal-soft: #7fbfbb;
+    --teal-primary: #178f89;
+    --teal-deep: #0f746f;
+    --teal-dark: #095a56;
+    --teal-extra-dark: #053d3a;
+
+    /* RGB channels support translucent treatments without duplicating colors. */
+    --teal-extra-light-rgb: 230 244 243;
+    --teal-light-rgb: 184 220 218;
+    --teal-soft-rgb: 127 191 187;
+    --teal-primary-rgb: 23 143 137;
+    --teal-deep-rgb: 15 116 111;
+    --teal-dark-rgb: 9 90 86;
+    --teal-extra-dark-rgb: 5 61 58;
+
+    /* Usability neutrals. */
+    --neutral-white: #ffffff;
+    --neutral-ink: #1e2b2b;
+    --neutral-text: #4a6060;
+    --neutral-muted: #6b7c7a;
+    --neutral-disabled: #a0b1af;
+    --neutral-divider: #dbe5e3;
+    --neutral-surface: var(--neutral-white);
+    --neutral-white-rgb: 255 255 255;
+    --neutral-ink-rgb: 30 43 43;
+    --neutral-surface-rgb: 255 255 255;
+    --neutral-disabled-rgb: 160 177 175;
+    --neutral-divider-rgb: 219 229 227;
+
+    /* System feedback colors; never use these as brand accents. */
+    --status-success: #15803d;
+    --status-success-bg: #dcfce7;
+    --status-warning: #b45309;
+    --status-warning-bg: #fef3c7;
+    --status-error: #be123c;
+    --status-error-strong: #e11d48;
+    --status-error-bg: #fff1f2;
+    --status-success-rgb: 21 128 61;
+    --status-warning-rgb: 180 83 9;
+    --status-error-rgb: 190 18 60;
+}

@@ -1,0 +1,85 @@
+name: Bisklet CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  source-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Reject tracked credential files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess, re, sys
+          paths = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          blocked = []
+          for p in filter(None, paths):
+              name = p.rsplit('/', 1)[-1].lower()
+              if (name == '.env' or name.startswith('.env.')) and name != '.env.example':
+                  blocked.append(p)
+              if re.search(r'\.(p12|pfx|jks|keystore|pem)$', name):
+                  blocked.append(p)
+          if blocked:
+              print('Blocked private files:', len(blocked))
+              sys.exit(1)
+          print('No forbidden credential filenames found')
+          PY
+      - name: Gitleaks source scan
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/scan:ro" zricethezav/gitleaks:v8.30.1 dir --redact /scan
+  flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test
+  laravel:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, sqlite3, pdo_sqlite, xml, curl
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - run: php artisan test
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+  gateway:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gateway/go.mod
+          cache: false
+      - run: go test ./...
+      - run: go vet ./...

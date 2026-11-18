@@ -1,0 +1,53 @@
+// android/build.gradle (root, Groovy DSL)
+// - Keeps your repos
+// - Propagates secrets to subprojects
+// - EXCLUDES com.mapbox.common:okhttp globally to fix duplicate classes
+// - Standard `clean` task
+
+import org.gradle.api.tasks.Delete
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
+    }
+}
+
+// Make secrets available to all subprojects if present
+gradle.beforeProject { project ->
+    def downloadsToken = (project.findProperty('MAPBOX_DOWNLOADS_TOKEN')
+        ?: System.getenv('MAPBOX_DOWNLOADS_TOKEN'))?.toString()?.trim()
+    if (downloadsToken) {
+        project.extensions.extraProperties.set('MAPBOX_DOWNLOADS_TOKEN', downloadsToken)
+        project.extensions.extraProperties.set('SDK_REGISTRY_TOKEN', downloadsToken)
+    }
+
+    def pubnubKey = (project.findProperty('PUBNUB_SUBSCRIBE_KEY')
+        ?: System.getenv('PUBNUB_SUBSCRIBE_KEY'))?.toString()?.trim()
+    if (pubnubKey) {
+        project.extensions.extraProperties.set('PUBNUB_SUBSCRIBE_KEY', pubnubKey)
+    }
+}
+
+// Dependency alignment + de-duplication
+subprojects { sub ->
+    // Do NOT tweak compileOptions/kotlinOptions here (AGP finalizes them)
+    configurations.all {
+        // 1) Remove the extra Mapbox okhttp module that duplicates classes from `common`
+        exclude group: 'com.mapbox.common', module: 'okhttp'
+
+        // 2) (Optional/defensive) If Gradle still sees both, prefer the one in `common`
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'com.mapbox.common'
+                    && details.requested.name == 'okhttp') {
+                // There is no 24.15.0 for this module on Mapbox; excluding above is the real fix.
+                // This block just documents intent; no version pin is applied.
+            }
+        }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}

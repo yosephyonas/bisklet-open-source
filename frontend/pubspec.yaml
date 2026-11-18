@@ -1,0 +1,32 @@
+name: bisklet
+description: "Bike sharing client for Addis Ababa."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^2.5.1
+  flutter_dotenv: ^5.1.0
+  google_fonts: ^6.2.1
+  mapbox_maps_flutter: ^2.11.0
+  hive_flutter: ^1.1.0
+  http: ^1.2.1
+  geolocator: ^11.0.0
+  permission_handler: ^11.3.1
+  mobile_scanner: ^5.2.3
+  web_socket_channel: ^2.4.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

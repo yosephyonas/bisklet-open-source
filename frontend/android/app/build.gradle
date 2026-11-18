@@ -1,0 +1,160 @@
+import java.util.Properties
+import org.gradle.api.JavaVersion
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'dev.flutter.flutter-gradle-plugin'
+}
+
+android {
+    namespace 'com.bisklet.ride'
+    compileSdk 36
+
+    compileOptions {
+        // Java 17 for source/target
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // IMPORTANT: keep Kotlin on 17 to match Java (avoid 21)
+    kotlinOptions {
+        jvmTarget = '17'
+        freeCompilerArgs += ['-Xjvm-default=all']
+    }
+
+    defaultConfig {
+        applicationId 'com.bisklet.ride'
+
+        minSdk 24
+        targetSdk 35
+        versionCode 9
+        versionName '1.0.8'
+
+        // Prefer a pk.* runtime token; fall back to downloads token only if that’s all you’ve set
+        def mapboxAccessToken = ([
+            project.findProperty('MAPBOX_ACCESS_TOKEN'),
+            System.getenv('MAPBOX_ACCESS_TOKEN'),
+            project.findProperty('MAPBOX_DOWNLOADS_TOKEN'),
+            System.getenv('MAPBOX_DOWNLOADS_TOKEN')
+        ].find { value -> value != null && value.toString().trim().length() > 0 }?.toString()?.trim()) ?: ''
+
+        if (mapboxAccessToken.isEmpty()) {
+            project.logger.warn('[bisklet] MAPBOX_ACCESS_TOKEN is empty. ' +
+                'Set it via android/gradle.properties, ~/.gradle/gradle.properties, ' +
+                'or --dart-define=MAPBOX_ACCESS_TOKEN=pk.xxxxxx when running Flutter.')
+        }
+
+        resValue 'string', 'mapbox_access_token', mapboxAccessToken
+        // multiDexEnabled true  // optional
+    }
+
+    packagingOptions {
+        resources {
+            pickFirsts += [
+                'assets/flutter_assets/NativeAssetsManifest.json',
+                'assets/flutter_assets/NOTICE.Z',
+                'assets/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf',
+                'assets/flutter_assets/shaders/ink_sparkle.frag',
+                'assets/flutter_assets/vm_snapshot_data'
+            ]
+            excludes += [
+                'assets/sdk_versions/**'
+            ]
+        }
+    }
+
+    // Signing (unchanged)
+    def keystoreProps = new Properties()
+    def propsFile = rootProject.file('key.properties')
+    if (propsFile.exists()) {
+        propsFile.withInputStream { keystoreProps.load(it) }
+    } else {
+        throw new GradleException('key.properties file not found. See README.')
+    }
+
+    signingConfigs {
+        release {
+            storeFile keystoreProps['storeFile'] ? file(keystoreProps['storeFile'].toString()) : null
+            storePassword keystoreProps['storePassword']
+            keyAlias keystoreProps['keyAlias']
+            keyPassword keystoreProps['keyPassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    // Print where Gradle places APK outputs
+    applicationVariants.all { variant ->
+        println ">> Variant: ${variant.name}"
+        try {
+            variant.outputs.each { out ->
+                println ">> Output: ${out.outputFile}"
+            }
+        } catch (ignored) { }
+    }
+}
+
+// Kotlin toolchain -> 17 (this prevents the plugin from defaulting to 21)
+kotlin {
+    jvmToolchain(17)
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    // implementation 'androidx.multidex:multidex:2.0.1' // if you enable multiDex
+}
+
+/* ------------------------------------------------------------------------
+ * Mirror APKs to BOTH:
+ *   1) <android>/build/app/outputs/flutter-apk/app-<variant>.apk
+ *   2) <repo root>/build/app/outputs/flutter-apk/app-<variant>.apk  (Flutter tool path)
+ * ------------------------------------------------------------------------ */
+def androidRootApkDir = file("${rootProject.buildDir}/app/outputs/flutter-apk")
+def repoRootDir       = rootProject.projectDir.parentFile
+def flutterToolApkDir = new File(repoRootDir, "build/app/outputs/flutter-apk")
+def moduleApkDir      = file("$buildDir/outputs/apk")
+
+def mirrorApk = { File fromFile, String name ->
+    if (fromFile.exists()) {
+        androidRootApkDir.mkdirs()
+        flutterToolApkDir.mkdirs()
+        copy { from fromFile; into androidRootApkDir; rename { name } }
+        copy { from fromFile; into flutterToolApkDir; rename { name } }
+        println ">> Mirrored APK to ${androidRootApkDir}/${name}"
+        println ">> Mirrored APK to ${flutterToolApkDir}/${name} (Flutter tool path)"
+    } else {
+        println ">> APK not found at ${fromFile}"
+    }
+}
+
+tasks.register("copyDebugToFlutterApk") {
+    mustRunAfter("assembleDebug")
+    doLast { mirrorApk(file("${moduleApkDir}/debug/app-debug.apk"), "app-debug.apk") }
+}
+tasks.register("copyProfileToFlutterApk") {
+    mustRunAfter("assembleProfile")
+    doLast { mirrorApk(file("${moduleApkDir}/profile/app-profile.apk"), "app-profile.apk") }
+}
+tasks.register("copyReleaseToFlutterApk") {
+    mustRunAfter("assembleRelease")
+    doLast { mirrorApk(file("${moduleApkDir}/release/app-release.apk"), "app-release.apk") }
+}
+tasks.matching { it.name == "assembleDebug"  }.all { finalizedBy("copyDebugToFlutterApk")  }
+tasks.matching { it.name == "assembleProfile"}.all { finalizedBy("copyProfileToFlutterApk") }
+tasks.matching { it.name == "assembleRelease"}.all { finalizedBy("copyReleaseToFlutterApk") }
